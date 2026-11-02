@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Catch API drift from the core (nosyproxy/nosy) even when this repo is quiet.
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prettier --check src
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+
+  # src/api/generated must match what the core's nosy-model (main) generates.
+  types:
+    name: API types in sync with core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: nosy-web
+      - uses: actions/checkout@v7
+        with:
+          repository: nosyproxy/nosy
+          path: nosy
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: nosy
+      - run: make -C nosy-web types
+      - name: Check for drift
+        working-directory: nosy-web
+        run: |
+          if [ -n "$(git status --porcelain -- src/api/generated)" ]; then
+            git status --short -- src/api/generated
+            git --no-pager diff -- src/api/generated
+            echo "::error::src/api/generated is out of date with nosyproxy/nosy — run 'make types' and commit."
+            exit 1
+          fi
