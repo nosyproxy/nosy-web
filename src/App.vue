@@ -42,14 +42,15 @@ async function copyProxy() {
         <svg viewBox="0 0 24 24" class="size-6" aria-hidden="true">
           <rect width="24" height="24" rx="6" fill="var(--color-accent)" />
           <path
-            d="M7 6h5.5a3 3 0 0 1 0 6H7zM7 12h6.5a3 3 0 0 1 0 6H7z"
+            d="M7.5 17.5v-11l9 11v-11"
             fill="none"
             stroke="var(--color-on-accent)"
             stroke-width="2"
+            stroke-linecap="round"
             stroke-linejoin="round"
           />
         </svg>
-        <span class="text-[0.9375rem]">best<span class="text-accent">·</span>burp</span>
+        <span class="text-[0.9375rem]">nosy</span>
       </RouterLink>
       <nav class="segmented" :aria-label="t('nav.proxy')">
         <RouterLink
