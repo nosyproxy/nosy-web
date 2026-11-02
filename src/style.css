@@ -1,0 +1,161 @@
+@import 'tailwindcss';
+
+@custom-variant light (&:where([data-theme='light'], [data-theme='light'] *));
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, Menlo, monospace;
+
+  /* surfaces (dark default) */
+  --color-bg: #0e0f11;
+  --color-panel: #15171a;
+  --color-raised: #1c1f23;
+  --color-line: #272b31;
+  --color-hover: #22262b;
+  --color-fg: #e1e4e8;
+  --color-dim: #8b929c;
+  --color-faint: #575e68;
+
+  /* semantic */
+  --color-ok: #34d399;
+  --color-info: #38bdf8;
+  --color-warn: #fbbf24;
+  --color-caution: #fb923c;
+  --color-err: #f87171;
+  --color-violet: #c084fc;
+  --color-str: #7dd3fc;
+  --color-key: #fbbf24;
+
+  /* accent (overridden by data-accent) */
+  --color-accent: #f97316;
+  --color-on-accent: #160a02;
+}
+
+:root[data-theme='light'] {
+  --color-bg: #f3f4f6;
+  --color-panel: #ffffff;
+  --color-raised: #f6f7f9;
+  --color-line: #dde1e6;
+  --color-hover: #eceef1;
+  --color-fg: #1b1f24;
+  --color-dim: #5f6773;
+  --color-faint: #a0a7b1;
+  --color-ok: #047857;
+  --color-info: #0369a1;
+  --color-warn: #a16207;
+  --color-caution: #c2410c;
+  --color-err: #dc2626;
+  --color-violet: #7c3aed;
+  --color-str: #0b6aa2;
+  --color-key: #9a5b00;
+}
+
+:root[data-accent='orange'] {
+  --color-accent: #f97316;
+  --color-on-accent: #160a02;
+}
+:root[data-accent='blue'] {
+  --color-accent: #3b82f6;
+  --color-on-accent: #fff;
+}
+:root[data-accent='green'] {
+  --color-accent: #22c55e;
+  --color-on-accent: #04160a;
+}
+:root[data-accent='purple'] {
+  --color-accent: #a855f7;
+  --color-on-accent: #fff;
+}
+:root[data-accent='pink'] {
+  --color-accent: #ec4899;
+  --color-on-accent: #fff;
+}
+:root[data-accent='red'] {
+  --color-accent: #ef4444;
+  --color-on-accent: #fff;
+}
+:root[data-theme='light'][data-accent='orange'] {
+  --color-accent: #ea580c;
+  --color-on-accent: #fff;
+}
+:root[data-theme='light'][data-accent='green'] {
+  --color-accent: #16a34a;
+  --color-on-accent: #fff;
+}
+
+@layer base {
+  html {
+    /* All sizes are rem-based, so this scales the whole UI. */
+    font-size: calc(16px * var(--ui-scale, 1));
+  }
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg font-sans text-[0.8125rem] text-fg antialiased;
+    overflow: hidden;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
+    outline-offset: -2px;
+  }
+  input[type='checkbox'] {
+    accent-color: var(--color-accent);
+  }
+  kbd {
+    @apply rounded border border-b-2 border-line bg-raised px-1.5 py-px font-mono text-[0.6875rem] text-fg;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-line bg-raised px-2.5 text-xs
+      font-medium text-fg transition-colors select-none hover:bg-hover disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-icon {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-dim transition-colors hover:bg-hover
+      hover:text-fg disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply border-transparent bg-accent text-on-accent shadow-sm hover:bg-accent hover:brightness-110;
+  }
+  .btn-danger {
+    @apply border-err/40 text-err hover:bg-err/10;
+  }
+  .input {
+    @apply h-7 rounded-md border border-line bg-bg px-2 text-xs text-fg transition-colors placeholder:text-faint
+      focus:border-accent focus:outline-none;
+  }
+  .chip {
+    @apply h-6 rounded-md px-2 text-[0.6875rem] font-medium text-dim transition-colors select-none hover:bg-hover
+      hover:text-fg;
+  }
+  .chip-on {
+    @apply bg-accent/15 text-accent hover:bg-accent/20 hover:text-accent;
+  }
+  .segmented {
+    @apply inline-flex items-center gap-0.5 rounded-lg bg-bg p-0.5;
+  }
+  .segment {
+    @apply inline-flex h-6 items-center gap-1.5 rounded-md px-2.5 text-xs text-dim transition-colors select-none
+      hover:text-fg;
+  }
+  .segment-on {
+    @apply bg-raised text-fg shadow-sm ring-1 ring-line;
+  }
+  .panel-title {
+    @apply text-[0.6875rem] font-semibold tracking-wider text-dim uppercase;
+  }
+  .card {
+    @apply rounded-xl border border-line bg-panel;
+  }
+}
