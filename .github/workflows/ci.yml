@@ -1,13 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
-  # Catch API drift from the core (nosyproxy/nosy) even when this repo is quiet.
-  schedule:
-    - cron: '0 6 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,8 +13,12 @@ permissions:
 
 jobs:
   check:
-    name: lint · typecheck · test · build
-    runs-on: ubuntu-latest
+    name: lint · typecheck · test · build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -33,6 +32,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux'
         with:
           name: dist
           path: dist
@@ -40,8 +40,15 @@ jobs:
 
   # src/api/generated must match what the core's nosy-model (main) generates.
   types:
-    name: API types in sync with core
-    runs-on: ubuntu-latest
+    name: API types in sync with core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,7 +61,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: nosy
-      - run: make -C nosy-web types
+      - name: Regenerate
+        run: |
+          rm -rf nosy-web/src/api/generated
+          cargo test --manifest-path nosy/Cargo.toml -p nosy-model --locked --quiet
+        env:
+          TS_RS_EXPORT_DIR: ${{ github.workspace }}/nosy-web/src/api/generated
       - name: Check for drift
         working-directory: nosy-web
         run: |
