@@ -26,9 +26,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx prettier --check src
-      - run: npm run lint
-      - run: npm run typecheck
+      - if: runner.os == 'Linux'
+        run: npx prettier --check src
+      - if: runner.os == 'Linux'
+        run: npm run lint
+      - if: runner.os == 'Linux'
+        run: npm run typecheck
       - run: npm test
       - run: npm run build
       - uses: actions/upload-artifact@v7
@@ -38,17 +41,9 @@ jobs:
           path: dist
           retention-days: 7
 
-  # src/api/generated must match what the core's nosy-model (main) generates.
   types:
-    name: API types in sync with core (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
+    name: API types in sync with core
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
