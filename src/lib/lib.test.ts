@@ -94,22 +94,28 @@ import { buildPreview } from './render'
 import { decodeBody, detectCharset } from './http'
 
 describe('render preview', () => {
-  it('injects CSP as the first element of <head>', () => {
+  const csp =
+    /<meta http-equiv="Content-Security-Policy" content="default-src 'none';[^"]*"><meta name="referrer"/
+
+  it('injects CSP right after the doctype', () => {
     const out = buildPreview(
       '<!doctype html><html><head><link rel=stylesheet href=//evil></head><body>x</body></html>',
-      {
-        external: false,
-      },
+      { external: false },
     )
-    expect(out).toMatch(
-      /<head><meta http-equiv="Content-Security-Policy" content="default-src 'none';[^"]*"><meta name="referrer"/,
-    )
+    expect(out.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy"')).toBe(true)
+    expect(out).toMatch(csp)
     expect(out.indexOf('Content-Security-Policy')).toBeLessThan(out.indexOf('evil'))
     expect(out).not.toContain('<base')
   })
-  it('creates a head when missing and escapes the base URL', () => {
+  it('cannot be hidden in a comment', () => {
+    const out = buildPreview('<!-- <head> --><html><head><img src=//evil>', { external: false })
+    expect(out.startsWith('<meta http-equiv="Content-Security-Policy"')).toBe(true)
+    expect(out).toMatch(csp)
+    expect(out.indexOf('Content-Security-Policy')).toBeLessThan(out.indexOf('<!--'))
+  })
+  it('handles fragments and escapes the base URL', () => {
     const out = buildPreview('<p>hi</p>', { external: true, baseUrl: 'https://a.com/"x' })
-    expect(out.startsWith('<!doctype html><head><meta http-equiv="Content-Security-Policy"')).toBe(true)
+    expect(out.startsWith('<meta http-equiv="Content-Security-Policy"')).toBe(true)
     expect(out).toContain('<base href="https://a.com/&quot;x">')
     expect(out).toContain('img-src * data:')
   })
