@@ -1,7 +1,9 @@
 /**
  * Prepares untrusted HTML for preview in a sandboxed iframe (`sandbox=""`, so no
- * scripts, forms, popups or same-origin access). A CSP <meta> is injected as the
- * first element of <head> to control which external resources may load.
+ * scripts, forms, popups or same-origin access). A CSP <meta> is injected at the very
+ * start of the document (after a leading doctype) to control which external resources
+ * may load: the parser puts it into <head> before anything the page contains, so it
+ * cannot be hidden in a comment, script or attribute.
  */
 export function buildPreview(html: string, opts: { external: boolean; baseUrl?: string }): string {
   const csp = opts.external
@@ -11,19 +13,9 @@ export function buildPreview(html: string, opts: { external: boolean; baseUrl?: 
   inject += '<meta name="referrer" content="no-referrer">'
   if (opts.external && opts.baseUrl) inject += `<base href="${escapeAttr(opts.baseUrl)}">`
 
-  const head = /<head\b[^>]*>/i.exec(html)
-  if (head) {
-    const at = head.index + head[0].length
-    return html.slice(0, at) + inject + html.slice(at)
-  }
-  const root = /<html\b[^>]*>/i.exec(html)
-  if (root) {
-    const at = root.index + root[0].length
-    return `${html.slice(0, at)}<head>${inject}</head>${html.slice(at)}`
-  }
   const doctype = /^\s*<!doctype[^>]*>/i.exec(html)
-  if (doctype) return `${doctype[0]}<head>${inject}</head>${html.slice(doctype[0].length)}`
-  return `<!doctype html><head>${inject}</head>${html}`
+  const at = doctype ? doctype[0].length : 0
+  return html.slice(0, at) + inject + html.slice(at)
 }
 
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
