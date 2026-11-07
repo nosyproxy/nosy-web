@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight, LoaderCircle, Lock, LockOpen, Plus, Send, Square, X } from '@lucide/vue'
+import {
+  Binary,
+  ChevronLeft,
+  ChevronRight,
+  LoaderCircle,
+  Lock,
+  LockOpen,
+  Plus,
+  Send,
+  Square,
+  X,
+} from '@lucide/vue'
 import CodeView from '@/components/CodeView.vue'
 import MessageViewer from '@/components/MessageViewer.vue'
 import SplitPane from '@/components/SplitPane.vue'
@@ -9,6 +20,7 @@ import { useRepeater } from '@/stores/repeater'
 import { useSettings } from '@/stores/settings'
 import type { Target } from '@/api/client'
 import { formatBytes, formatDuration, statusClass } from '@/lib/format'
+import { base64Size } from '@/lib/http'
 import { t } from '@/i18n'
 
 const rep = useRepeater()
@@ -258,6 +270,22 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
                 <h2 class="panel-title">{{ t('repeater.request') }}</h2>
                 <span class="ml-auto text-[0.6875rem] text-faint">{{ t('repeater.hint') }}</span>
               </header>
+              <div
+                v-if="tab.body_b64"
+                role="note"
+                class="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-warn/10 px-3 text-[0.6875rem] text-warn"
+              >
+                <Binary class="size-3.5 shrink-0" />
+                <span class="truncate">{{
+                  t('repeater.binaryBody', { size: formatBytes(base64Size(tab.body_b64)) })
+                }}</span>
+                <button
+                  class="ml-auto shrink-0 underline hover:text-fg"
+                  @click="rep.setBinaryBody(tab.id, null)"
+                >
+                  {{ t('repeater.binaryRemove') }}
+                </button>
+              </div>
               <div class="min-h-0 flex-1">
                 <CodeView
                   :key="tab.id"

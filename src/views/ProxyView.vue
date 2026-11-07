@@ -188,6 +188,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="flex h-full flex-col">
     <FilterBar v-model="flows.filter" :total="flows.total" :loading="flows.loading" @clear="clearAll" />
+    <div
+      v-if="flows.error"
+      role="alert"
+      class="flex h-7 shrink-0 items-center gap-2 border-b border-line bg-err/10 px-3 text-[0.6875rem] text-err"
+    >
+      <span class="truncate">{{ t('table.loadFailed', { msg: flows.error }) }}</span>
+      <button class="ml-auto underline hover:text-fg" @click="flows.reload">{{ t('table.retry') }}</button>
+    </div>
     <div class="min-h-0 flex-1">
       <SplitPane direction="vertical" :initial="45" storage-key="proxy-v">
         <template #a>
