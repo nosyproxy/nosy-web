@@ -4,4 +4,8 @@ import type { Target } from "./Target";
 /**
  * A captured request prepared for re-sending (same shape as a new repeater tab).
  */
-export type ReplayTemplate = { target: Target, raw_request: string, };
+export type ReplayTemplate = { target: Target, raw_request: string, 
+/**
+ * Set when the captured body is not valid UTF-8 (see [`RepeaterTab::body_b64`]).
+ */
+body_b64: string | null, };

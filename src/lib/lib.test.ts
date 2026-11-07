@@ -130,3 +130,21 @@ describe('charset', () => {
     expect(decodeBody(meta).endsWith('Привет')).toBe(true)
   })
 })
+
+describe('requestForEditor', async () => {
+  const { requestForEditor, base64Size } = await import('./http')
+  const bytes = (...parts: (string | number[])[]) =>
+    new Uint8Array(parts.flatMap((p) => (typeof p === 'string' ? [...new TextEncoder().encode(p)] : p)))
+
+  it('keeps UTF-8 requests in the editor', () => {
+    const r = requestForEditor(bytes('POST / HTTP/1.1\r\nHost: a\r\n\r\nпривет'))
+    expect(r).toEqual({ raw: 'POST / HTTP/1.1\r\nHost: a\r\n\r\nпривет', bodyB64: null })
+  })
+
+  it('splits off binary bodies as base64', () => {
+    const r = requestForEditor(bytes('POST / HTTP/1.1\r\nHost: a\r\n\r\n', [0, 0xff, 0x80, 0x58]))
+    expect(r.raw).toBe('POST / HTTP/1.1\r\nHost: a\r\n\r\n')
+    expect(r.bodyB64).toBe('AP+AWA==')
+    expect(base64Size(r.bodyB64!)).toBe(4)
+  })
+})

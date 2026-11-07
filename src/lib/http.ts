@@ -1,8 +1,39 @@
 const utf8 = new TextDecoder('utf-8', { fatal: false })
 const enc = new TextEncoder()
 
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true })
+
 export const decodeText = (b: Uint8Array): string => utf8.decode(b)
 export const encodeText = (s: string): Uint8Array => enc.encode(s)
+
+export function isUtf8(b: Uint8Array): boolean {
+  try {
+    strictUtf8.decode(b)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const toBase64 = (b: Uint8Array): string => {
+  let s = ''
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+
+/**
+ * Editor text for a raw request. A body that is not valid UTF-8 cannot live in the
+ * editor without corruption, so it is returned separately as base64.
+ */
+export function requestForEditor(b: Uint8Array): { raw: string; bodyB64: string | null } {
+  const end = headEnd(b)
+  if (end < 0 || end === b.length || isUtf8(b.subarray(end))) return { raw: decodeText(b), bodyB64: null }
+  return { raw: decodeText(b.subarray(0, end)), bodyB64: toBase64(b.subarray(end)) }
+}
+
+/** Decoded size of a base64 string. */
+export const base64Size = (s: string): number =>
+  Math.floor((s.replace(/=+$/, '').length * 3) / 4)
 
 /** Offset of the first byte after the head terminator (CRLFCRLF or LFLF), or -1. */
 export function headEnd(b: Uint8Array): number {

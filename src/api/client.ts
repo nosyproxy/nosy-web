@@ -2,13 +2,14 @@ import type { AppInfo } from './generated/AppInfo'
 import type { FlowDetail } from './generated/FlowDetail'
 import type { FlowPatch } from './generated/FlowPatch'
 import type { FlowSummary } from './generated/FlowSummary'
+import type { ProjectStats } from './generated/ProjectStats'
 import type { NewRepeaterTab } from './generated/NewRepeaterTab'
 import type { RepeaterEntry } from './generated/RepeaterEntry'
 import type { RepeaterTab } from './generated/RepeaterTab'
 import type { RepeaterTabPatch } from './generated/RepeaterTabPatch'
 import type { SendRequest } from './generated/SendRequest'
 
-export type { AppInfo, FlowDetail, FlowSummary, RepeaterEntry, RepeaterTab, SendRequest }
+export type { AppInfo, FlowDetail, FlowSummary, ProjectStats, RepeaterEntry, RepeaterTab, SendRequest }
 export type { Target } from './generated/Target'
 export type { WsEvent } from './generated/WsEvent'
 export type { Header } from './generated/Header'
@@ -76,6 +77,8 @@ function qs(params: object): string {
 
 export const api = {
   info: () => json<AppInfo>('/info'),
+  projectStats: () => json<ProjectStats>('/project/stats'),
+  compact: () => request('/project/compact', { method: 'POST' }),
 
   flows: (q: FlowQuery, signal?: AbortSignal) => json<FlowSummary[]>(`/flows${qs(q)}`, { signal }),
   flow: (id: number, signal?: AbortSignal) => json<FlowDetail>(`/flows/${id}`, { signal }),

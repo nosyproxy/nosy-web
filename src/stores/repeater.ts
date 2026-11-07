@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import { api, type RepeaterEntry, type RepeaterTab, type Target } from '@/api/client'
-import { decodeText } from '@/lib/http'
+import { requestForEditor } from '@/lib/http'
 import { useUi } from './ui'
 import { useSettings } from './settings'
 
@@ -64,7 +64,7 @@ export const useRepeater = defineStore('repeater', () => {
     raw = DEFAULT_REQUEST,
     target: Target = { host: 'example.com', port: 443, tls: true, http2: false },
   ) {
-    const tab = await api.createTab({ name: null, target, raw_request: raw })
+    const tab = await api.createTab({ name: null, target, raw_request: raw, body_b64: null })
     tabs.value.push(tab)
     await activate(tab.id)
     return tab
@@ -115,7 +115,9 @@ export const useRepeater = defineStore('repeater', () => {
     saveTimers.set(
       tab.id,
       setTimeout(() => {
-        api.patchTab(tab.id, { raw_request: tab.raw_request, target: tab.target }).catch(ui.error)
+        api
+          .patchTab(tab.id, { raw_request: tab.raw_request, target: tab.target, body_b64: tab.body_b64 ?? '' })
+          .catch(ui.error)
       }, 500),
     )
   }
@@ -124,6 +126,14 @@ export const useRepeater = defineStore('repeater', () => {
     const tab = tabs.value.find((t) => t.id === id)
     if (!tab || tab.raw_request === raw) return
     tab.raw_request = raw
+    scheduleSave(tab)
+  }
+
+  /** Set (base64) or remove (null) the binary body that replaces the editor body. */
+  function setBinaryBody(id: number, b64: string | null) {
+    const tab = tabs.value.find((t) => t.id === id)
+    if (!tab || (tab.body_b64 ?? null) === b64) return
+    tab.body_b64 = b64
     scheduleSave(tab)
   }
 
@@ -148,6 +158,7 @@ export const useRepeater = defineStore('repeater', () => {
         {
           target: tab.target,
           raw_request: tab.raw_request,
+          body_b64: tab.body_b64,
           update_content_length: settings.s.updateContentLength,
           timeout_ms: Math.max(1, settings.s.timeout) * 1000,
         },
@@ -180,8 +191,9 @@ export const useRepeater = defineStore('repeater', () => {
     s.index = index
     s.response = entry.error ? null : await api.historyResponse(entry.id, decode.value)
     if (restoreRequest) {
-      const raw = decodeText(await api.historyRequest(entry.id))
+      const { raw, bodyB64 } = requestForEditor(await api.historyRequest(entry.id))
       setDraft(id, raw)
+      setBinaryBody(id, bodyB64)
       setTarget(id, entry.target)
     }
   }
@@ -204,6 +216,7 @@ export const useRepeater = defineStore('repeater', () => {
     rename,
     move,
     setDraft,
+    setBinaryBody,
     setTarget,
     send,
     cancel,

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import {
+  Archive,
   Check,
+  LoaderCircle,
   Download,
   Keyboard,
   Languages,
@@ -20,6 +22,8 @@ import SegmentedControl from '@/components/SegmentedControl.vue'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { ACCENTS, useSettings, type Accent, type Density, type Theme } from '@/stores/settings'
 import { useInfo } from '@/stores/info'
+import { useUi } from '@/stores/ui'
+import { api, type ProjectStats } from '@/api/client'
 import { formatBytes } from '@/lib/format'
 import { LOCALES, t, type Locale, type MessageKey } from '@/i18n'
 
@@ -28,6 +32,31 @@ const s = settings.s
 const infoStore = useInfo()
 onMounted(() => infoStore.load())
 const info = computed(() => infoStore.info)
+const uiVersion = __UI_VERSION__
+
+const ui = useUi()
+const stats = ref<ProjectStats | null>(null)
+const compacting = ref(false)
+const loadStats = () =>
+  api
+    .projectStats()
+    .then((v) => (stats.value = v))
+    .catch(() => {})
+onMounted(loadStats)
+async function compact() {
+  compacting.value = true
+  const before = stats.value?.file_bytes ?? 0
+  try {
+    await api.compact()
+    await loadStats()
+    const after = stats.value?.file_bytes ?? 0
+    ui.toast(t('settings.compacted', { saved: formatBytes(Math.max(0, before - after)) }))
+  } catch (e) {
+    ui.error(e)
+  } finally {
+    compacting.value = false
+  }
+}
 
 const sections = computed(() => [
   { id: 'general', label: t('settings.general'), icon: Languages },
@@ -356,7 +385,7 @@ function reset() {
           </h2>
           <dl v-if="info" class="grid grid-cols-[13rem_1fr] gap-x-4 gap-y-2.5 text-xs">
             <dt class="text-dim">{{ t('settings.version') }}</dt>
-            <dd class="font-mono">{{ info.version }}</dd>
+            <dd class="font-mono">{{ info.version }} · UI {{ uiVersion }}</dd>
             <dt class="text-dim">{{ t('settings.proxyListener') }}</dt>
             <dd class="font-mono">http://{{ info.proxy_addr }}</dd>
             <dt class="text-dim">{{ t('settings.webUi') }}</dt>
@@ -369,6 +398,36 @@ function reset() {
             <dd>{{ info.verify_upstream ? t('common.on') : t('settings.verifyOff') }}</dd>
             <dt class="text-dim">{{ t('settings.maxBody') }}</dt>
             <dd class="font-mono">{{ formatBytes(info.max_capture_bytes) }}</dd>
+            <dt class="text-dim">{{ t('settings.auth') }}</dt>
+            <dd>{{ info.auth ? t('settings.authOn') : t('settings.authOff') }}</dd>
+            <template v-if="stats">
+              <dt class="text-dim">{{ t('settings.projectSize') }}</dt>
+              <dd class="flex items-center gap-3">
+                <span class="font-mono">{{ formatBytes(stats.file_bytes) }}</span>
+                <span class="text-faint">{{ t('settings.flowCount', { n: stats.flows }) }}</span>
+                <button class="btn !h-6 !px-2 text-[0.6875rem]" :disabled="compacting" @click="compact">
+                  <LoaderCircle v-if="compacting" class="size-3 animate-spin" />
+                  <Archive v-else class="size-3" />
+                  {{ t('settings.compact') }}
+                </button>
+              </dd>
+              <dt class="text-dim">{{ t('settings.searchIndex') }}</dt>
+              <dd>
+                <template v-if="!info.search_index">{{ t('common.off') }}</template>
+                <template v-else-if="stats.index_pending">{{
+                  t('settings.indexing', { done: stats.indexed, left: stats.index_pending })
+                }}</template>
+                <template v-else>{{ t('settings.indexed', { n: stats.indexed }) }}</template>
+              </dd>
+              <template v-if="stats.dropped_events || stats.dropped_bodies">
+                <dt class="text-dim">{{ t('settings.dropped') }}</dt>
+                <dd class="text-warn">
+                  {{
+                    t('settings.droppedValue', { events: stats.dropped_events, bodies: stats.dropped_bodies })
+                  }}
+                </dd>
+              </template>
+            </template>
           </dl>
           <p class="mt-4 text-xs text-faint">{{ t('settings.cliHint') }}</p>
         </section>
