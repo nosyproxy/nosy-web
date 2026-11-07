@@ -9,11 +9,17 @@ export type SortKey =
   'id' | 'host' | 'method' | 'path' | 'status' | 'resp_size' | 'content_type' | 'duration_us'
 
 const PAGE = 1000
+/** Live updates beyond this many loaded rows evict the oldest flows (they reload on scroll). */
+export const MAX_ROWS = 200_000
+/** Above this share of changed rows a full re-sort is cheaper than incremental inserts. */
+const BULK_RATIO = 0.1
 
 export const useFlows = defineStore('flows', () => {
   // The index is deliberately non-reactive; `rows` is a shallowRef swapped once
   // per animation frame, so 1000s of updates/s cost one re-render per frame.
   const byId = new Map<number, FlowSummary>()
+  /** Kept sorted by `compare`; `rows` is a fresh copy of it after each change. */
+  let sorted: FlowSummary[] = []
   const rows = shallowRef<FlowSummary[]>([])
   const filter = reactive(emptyFilter())
   const settings = useSettings()
@@ -23,12 +29,15 @@ export const useFlows = defineStore('flows', () => {
   const connected = ref(false)
   const selectedId = ref<number | null>(null)
   const total = ref(0)
+  const error = ref<string | null>(null)
 
   let matcher = compileFilter(filter)
   let oldestLoaded = Infinity
   let pending: FlowSummary[] = []
   let frame = 0
-  let loadCtl: AbortController | null = null
+  /** Bumped by every reload; responses from an older generation are discarded. */
+  let generation = 0
+  let ctl: AbortController | null = null
 
   function compare(a: FlowSummary, b: FlowSummary): number {
     const { key, dir } = sort.value
@@ -40,57 +49,131 @@ export const useFlows = defineStore('flows', () => {
     return (av < bv ? -1 : 1) * dir
   }
 
+  /** First index whose row sorts after `f` (compare is a total order thanks to the id tie-break). */
+  function lowerBound(f: FlowSummary): number {
+    let lo = 0
+    let hi = sorted.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (compare(sorted[mid]!, f) < 0) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+
+  function publish() {
+    rows.value = sorted.slice()
+    total.value = sorted.length
+  }
+
   function rebuild() {
-    const arr = Array.from(byId.values())
-    arr.sort(compare)
-    rows.value = arr
-    total.value = arr.length
+    sorted = Array.from(byId.values())
+    sorted.sort(compare)
+    publish()
+  }
+
+  function remove(f: FlowSummary) {
+    const i = lowerBound(f)
+    if (sorted[i] === f) sorted.splice(i, 1)
+  }
+
+  /** Apply upserts incrementally (binary insert), or re-sort when the batch is large. */
+  function upsert(batch: FlowSummary[]) {
+    if (batch.length > Math.max(64, sorted.length * BULK_RATIO)) {
+      for (const f of batch) byId.set(f.id, f)
+      rebuild()
+      return
+    }
+    for (const f of batch) {
+      const old = byId.get(f.id)
+      if (old) remove(old)
+      byId.set(f.id, f)
+      sorted.splice(lowerBound(f), 0, f)
+    }
+    publish()
+  }
+
+  /** Drop the oldest flows once the live window outgrows MAX_ROWS. */
+  function evict() {
+    if (byId.size <= MAX_ROWS * 1.05) return
+    const ids = Array.from(byId.keys()).sort((a, b) => a - b)
+    const drop = ids.length - MAX_ROWS
+    for (let i = 0; i < drop; i++) {
+      if (ids[i] !== selectedId.value) byId.delete(ids[i]!)
+    }
+    oldestLoaded = ids[drop]!
+    exhausted.value = false
+    rebuild()
+  }
+
+  function begin(): { gen: number; signal: AbortSignal } {
+    ctl?.abort()
+    ctl = new AbortController()
+    return { gen: ++generation, signal: ctl.signal }
+  }
+
+  function failed(e: unknown, gen: number) {
+    if ((e as Error).name === 'AbortError' || gen !== generation) return
+    error.value = (e as Error).message || String(e)
+    console.error(e)
   }
 
   async function reload() {
-    loadCtl?.abort()
-    const ctl = (loadCtl = new AbortController())
+    const { gen, signal } = begin()
     loading.value = true
     try {
-      const page = await api.flows({ ...toQuery(filter), limit: PAGE }, ctl.signal)
+      const page = await api.flows({ ...toQuery(filter), limit: PAGE }, signal)
+      if (gen !== generation) return
       byId.clear()
       pending = []
       for (const f of page) byId.set(f.id, f)
       oldestLoaded = page.length ? page[page.length - 1]!.id : Infinity
       exhausted.value = page.length < PAGE
+      error.value = null
       if (selectedId.value != null && !byId.has(selectedId.value)) selectedId.value = null
       rebuild()
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') console.error(e)
+      failed(e, gen)
     } finally {
-      if (loadCtl === ctl) loading.value = false
+      if (gen === generation) loading.value = false
     }
   }
 
   async function loadMore() {
     if (loading.value || exhausted.value || !Number.isFinite(oldestLoaded)) return
+    const gen = generation
+    const signal = ctl?.signal
     loading.value = true
     try {
-      const page = await api.flows({ ...toQuery(filter), before_id: oldestLoaded, limit: PAGE })
-      for (const f of page) byId.set(f.id, f)
+      const page = await api.flows({ ...toQuery(filter), before_id: oldestLoaded, limit: PAGE }, signal)
+      // A reload (new filter, resync, clear) started meanwhile: this page is stale.
+      if (gen !== generation) return
       if (page.length) oldestLoaded = page[page.length - 1]!.id
       exhausted.value = page.length < PAGE
-      rebuild()
+      error.value = null
+      upsert(page)
+    } catch (e) {
+      failed(e, gen)
     } finally {
-      loading.value = false
+      if (gen === generation) loading.value = false
     }
   }
 
   function flush() {
     frame = 0
     if (!pending.length) return
+    // Coalesce repeated updates of the same flow within the frame.
+    const latest = new Map<number, FlowSummary>()
     for (const f of pending) {
       // Ignore updates for old flows outside the loaded window.
       const inWindow = exhausted.value || f.id >= oldestLoaded || !Number.isFinite(oldestLoaded)
-      if (byId.has(f.id) || (inWindow && matcher(f))) byId.set(f.id, f)
+      if (byId.has(f.id) || (inWindow && matcher(f))) latest.set(f.id, f)
     }
     pending = []
-    rebuild()
+    if (latest.size) {
+      upsert(Array.from(latest.values()))
+      evict()
+    }
   }
 
   function onEvent(e: WsEvent) {
@@ -99,13 +182,24 @@ export const useFlows = defineStore('flows', () => {
         for (const f of e.flows) pending.push(f)
         if (!frame) frame = requestAnimationFrame(flush)
         break
-      case 'deleted':
-        for (const id of e.ids) byId.delete(id)
-        if (selectedId.value != null && e.ids.includes(selectedId.value)) selectedId.value = null
-        rebuild()
+      case 'deleted': {
+        const ids = new Set(e.ids)
+        let n = 0
+        for (const id of ids) if (byId.delete(id)) n++
+        if (n) {
+          sorted = sorted.filter((f) => !ids.has(f.id))
+          publish()
+        }
+        pending = pending.filter((f) => !ids.has(f.id))
+        if (selectedId.value != null && ids.has(selectedId.value)) selectedId.value = null
         break
+      }
       case 'cleared':
+        // Invalidate any in-flight page request: it predates the clear.
+        begin()
+        loading.value = false
         byId.clear()
+        pending = []
         selectedId.value = null
         oldestLoaded = Infinity
         exhausted.value = true
@@ -160,6 +254,7 @@ export const useFlows = defineStore('flows', () => {
     connected,
     selectedId,
     total,
+    error,
     start,
     reload,
     loadMore,
